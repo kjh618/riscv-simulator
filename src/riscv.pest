@@ -1,0 +1,18 @@
+WHITESPACE = _{ " " | "\t" }
+decimal = @{ "-"? ~ ASCII_DIGIT+ }
+hexadecimal = @{ "0x" ~ ASCII_HEX_DIGIT+ }
+number = @{ hexadecimal | decimal }
+register = @{ "zero" | "ra" | "sp" | "gp" | "tp" | "t0" | "t1" | "t2" | "s0" | "fp" | "s1" | "a0" | "a1" | "a2" | "a3" | "a4" | "a5" | "a6" | "a7" | "s2" | "s3" | "s4" | "s5" | "s6" | "s7" | "s8" | "s9" | "s10" | "s11" | "t3" | "t4" | "t5" | "t6" }
+identifier = @{ !register ~ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
+
+
+program = _{ (line ~ NEWLINE)* ~ line }
+
+line = _{ label | instruction | WHITESPACE* }
+
+instruction = { identifier ~ argument_list? }
+argument_list = _{ (argument ~ ",")* ~ argument }
+argument = { address | number | register | identifier }
+address = { number ~ "(" ~ register ~ ")" }
+
+label = { identifier ~ ":" }
