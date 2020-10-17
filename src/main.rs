@@ -1,5 +1,6 @@
 mod ast;
-mod riscv_parser;
+mod parser;
+mod simulator;
 
 use pest::Parser;
 
@@ -9,10 +10,13 @@ fn main() {
 
     let file = std::fs::read_to_string(path).unwrap();
 
-    let pairs = riscv_parser::Parser::parse(riscv_parser::Rule::program, file.as_str())
+    let pairs = parser::Parser::parse(parser::Rule::program, file.as_str())
         .unwrap_or_else(|e| panic!("{}", e));
     let program = ast::Program::from_pest_pairs(pairs);
-    for line in program.lines {
+    for line in &program.lines {
         println!("{:?}", line);
     }
+
+    let state = simulator::State::new(program);
+    println!("{}", state);
 }

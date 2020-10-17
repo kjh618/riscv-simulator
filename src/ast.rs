@@ -1,14 +1,14 @@
-use crate::riscv_parser;
 use phf::phf_map;
+use crate::parser;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Register {
     pub index: u8,
 }
 
-#[derive(Debug, Clone)]
-pub enum JumpTarget {
-    Label(String),
+#[derive(Debug, Copy, Clone)]
+pub enum JumpTarget<'a> {
+    Label(&'a str),
     Offset(i32),
 }
 
@@ -38,47 +38,48 @@ pub enum IntegerImmediateOperation { Add, Slt, Sltu, Xor, Or, And, Sll, Srl, Sra
 #[rustfmt::skip]
 pub enum IntegerRegisterOperation { Add, Sub, Sll, Slt, Sltu, Xor, Srl, Sra, Or, And }
 
-#[derive(Debug, Clone)]
-pub enum Instruction {
+#[derive(Debug, Copy, Clone)]
+pub enum Instruction<'a> {
     Lui(Register, u32),
     Auipc(Register, u32),
-    Jal(Register, JumpTarget),
+    Jal(Register, JumpTarget<'a>),
     Jalr(Register, Register, i32),
-    Branch(BranchCondition, Register, Register, JumpTarget),
+    Branch(BranchCondition, Register, Register, JumpTarget<'a>),
     Load(LoadWidth, Register, Address),
     Store(StoreWidth, Register, Address),
     IntegerImmediate(IntegerImmediateOperation, Register, Register, i32),
     IntegerRegister(IntegerRegisterOperation, Register, Register, Register),
+    Nop,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Label<'a> {
+    pub name: &'a str,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Line<'a> {
+    Instruction(Instruction<'a>),
+    Label(Label<'a>),
 }
 
 #[derive(Debug, Clone)]
-pub struct Label {
-    pub name: String,
+pub struct Program<'a> {
+    pub lines: Vec<Line<'a>>,
 }
 
-#[derive(Debug, Clone)]
-pub enum Line {
-    Instruction(Instruction),
-    Label(Label),
-}
-
-#[derive(Debug, Clone)]
-pub struct Program {
-    pub lines: Vec<Line>,
-}
-
-fn u32_from_pest_pair(pair: &pest::iterators::Pair<riscv_parser::Rule>) -> u32 {
+fn u32_from_pest_pair(pair: &pest::iterators::Pair<parser::Rule>) -> u32 {
     match pair.as_rule() {
-        riscv_parser::Rule::decimal => u32::from_str_radix(pair.as_str(), 10).unwrap(),
-        riscv_parser::Rule::hexadecimal => u32::from_str_radix(&pair.as_str()[2..], 16).unwrap(),
+        parser::Rule::decimal => u32::from_str_radix(pair.as_str(), 10).unwrap(),
+        parser::Rule::hexadecimal => u32::from_str_radix(&pair.as_str()[2..], 16).unwrap(),
         _ => panic!("Not a number"),
     }
 }
 
-fn i32_from_pest_pair(pair: &pest::iterators::Pair<riscv_parser::Rule>) -> i32 {
+fn i32_from_pest_pair(pair: &pest::iterators::Pair<parser::Rule>) -> i32 {
     match pair.as_rule() {
-        riscv_parser::Rule::decimal => i32::from_str_radix(pair.as_str(), 10).unwrap(),
-        riscv_parser::Rule::hexadecimal => i32::from_str_radix(&pair.as_str()[2..], 16).unwrap(),
+        parser::Rule::decimal => i32::from_str_radix(pair.as_str(), 10).unwrap(),
+        parser::Rule::hexadecimal => i32::from_str_radix(&pair.as_str()[2..], 16).unwrap(),
         _ => panic!("Not a number"),
     }
 }
@@ -120,26 +121,26 @@ impl Register {
         "t6" => 31,
     };
 
-    fn from_pest_pair(pair: &pest::iterators::Pair<riscv_parser::Rule>) -> Self {
-        assert_eq!(pair.as_rule(), riscv_parser::Rule::register);
+    fn from_pest_pair(pair: &pest::iterators::Pair<parser::Rule>) -> Self {
+        assert_eq!(pair.as_rule(), parser::Rule::register);
         let index = Register::NAME_TO_INDEX[pair.as_str()];
         Self { index }
     }
 }
 
-impl JumpTarget {
-    fn from_pest_pair(pair: &pest::iterators::Pair<riscv_parser::Rule>) -> Self {
+impl<'a> JumpTarget<'a> {
+    fn from_pest_pair(pair: &pest::iterators::Pair<'a, parser::Rule>) -> Self {
         match pair.as_rule() {
-            riscv_parser::Rule::label_name => Self::Label(pair.as_str().to_string()),
-            riscv_parser::Rule::number => Self::Offset(i32_from_pest_pair(pair)),
+            parser::Rule::label_name => Self::Label(pair.as_str()),
+            parser::Rule::number => Self::Offset(i32_from_pest_pair(pair)),
             _ => panic!("Wrong jump target"),
         }
     }
 }
 
 impl Address {
-    fn from_pest_pair(pair: pest::iterators::Pair<riscv_parser::Rule>) -> Self {
-        assert_eq!(pair.as_rule(), riscv_parser::Rule::address);
+    fn from_pest_pair(pair: pest::iterators::Pair<parser::Rule>) -> Self {
+        assert_eq!(pair.as_rule(), parser::Rule::address);
         let mut pairs = pair.into_inner();
         let offset = i32_from_pest_pair(&pairs.next().unwrap());
         let base = Register::from_pest_pair(&pairs.next().unwrap());
@@ -160,6 +161,7 @@ impl BranchCondition {
         }
     }
 }
+
 impl LoadWidth {
     fn from_instruction_name(name: &str) -> Self {
         match name {
@@ -172,6 +174,7 @@ impl LoadWidth {
         }
     }
 }
+
 impl StoreWidth {
     fn from_instruction_name(name: &str) -> Self {
         match name {
@@ -182,6 +185,7 @@ impl StoreWidth {
         }
     }
 }
+
 impl IntegerImmediateOperation {
     fn from_instruction_name(name: &str) -> Self {
         match name {
@@ -198,6 +202,7 @@ impl IntegerImmediateOperation {
         }
     }
 }
+
 impl IntegerRegisterOperation {
     fn from_instruction_name(name: &str) -> Self {
         match name {
@@ -215,9 +220,10 @@ impl IntegerRegisterOperation {
         }
     }
 }
-impl Instruction {
-    fn from_pest_pair(pair: pest::iterators::Pair<riscv_parser::Rule>) -> Self {
-        assert_eq!(pair.as_rule(), riscv_parser::Rule::instruction);
+
+impl<'a> Instruction<'a> {
+    fn from_pest_pair(pair: pest::iterators::Pair<'a, parser::Rule>) -> Self {
+        assert_eq!(pair.as_rule(), parser::Rule::instruction);
         let mut pairs = pair.into_inner();
         let instruction_name = pairs.next().unwrap();
         let argument_list: Vec<_> = pairs.collect();
@@ -283,25 +289,25 @@ impl Instruction {
     }
 }
 
-impl Label {
-    fn from_pest_pair(pair: pest::iterators::Pair<riscv_parser::Rule>) -> Self {
-        assert_eq!(pair.as_rule(), riscv_parser::Rule::label);
+impl<'a> Label<'a> {
+    fn from_pest_pair(pair: pest::iterators::Pair<'a, parser::Rule>) -> Self {
+        assert_eq!(pair.as_rule(), parser::Rule::label);
         let label_name = pair.into_inner().next().unwrap();
         Self {
-            name: label_name.as_str().to_string(),
+            name: label_name.as_str(),
         }
     }
 }
 
-impl Program {
-    pub fn from_pest_pairs(pairs: pest::iterators::Pairs<riscv_parser::Rule>) -> Self {
+impl<'a> Program<'a> {
+    pub fn from_pest_pairs(pairs: pest::iterators::Pairs<'a, parser::Rule>) -> Self {
         let mut lines = Vec::new();
         for pair in pairs {
             let line = match pair.as_rule() {
-                riscv_parser::Rule::instruction => {
+                parser::Rule::instruction => {
                     Line::Instruction(Instruction::from_pest_pair(pair))
                 }
-                riscv_parser::Rule::label => Line::Label(Label::from_pest_pair(pair)),
+                parser::Rule::label => Line::Label(Label::from_pest_pair(pair)),
                 _ => panic!("Wrong line"),
             };
             lines.push(line);
