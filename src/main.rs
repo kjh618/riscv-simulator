@@ -18,5 +18,6 @@ fn main() {
     }
 
     let state = simulator::State::new(program);
-    println!("{}", state);
+    println!("{:?}", state);
 }
+

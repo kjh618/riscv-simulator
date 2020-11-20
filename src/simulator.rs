@@ -1,22 +1,24 @@
 use crate::ast;
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::fmt;
 use std::ops;
 
+#[derive(Debug)]
 struct RegisterFile {
     registers: [u32; RegisterFile::NUM_REGISTERS],
 }
 
+#[derive(Debug)]
 struct InstructionMemory<'a> {
     memory: [ast::Instruction<'a>; InstructionMemory::SIZE / 4],
 }
 
+#[derive(Debug)]
 struct DataMemory {
     memory: [u8; DataMemory::SIZE],
 }
 
-// TODO: Seperate structs for register and memory
+#[derive(Debug)]
 pub struct State<'a> {
     pc: u32,
     register: RegisterFile,
@@ -39,7 +41,11 @@ impl ops::Index<u8> for RegisterFile {
     type Output = u32;
 
     fn index(&self, index: u8) -> &Self::Output {
-        &self.registers[index as usize]
+        if index == 0 {
+            &0
+        } else {
+            &self.registers[index as usize]
+        }
     }
 }
 
@@ -124,18 +130,6 @@ impl DataMemory {
     }
 }
 
-impl fmt::Display for State<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "pc: {}", self.pc)?;
-        // TODO
-        write!(f, "others: ...")
-    }
-}
-
-fn address_add_offset(address: u32, offset: i32) -> u32 {
-    ((address as i64) + (offset as i64)) as u32
-}
-
 impl<'a> State<'a> {
     pub fn new(program: ast::Program<'a>) -> Self {
         let mut label_to_address = HashMap::new();
@@ -147,6 +141,10 @@ impl<'a> State<'a> {
             data_memory: DataMemory::new(),
             label_to_address,
         }
+    }
+
+    fn address_add_offset(address: u32, offset: i32) -> u32 {
+        ((address as i64) + (offset as i64)) as u32
     }
 
     pub fn next(&mut self) {
@@ -161,18 +159,19 @@ impl<'a> State<'a> {
             ast::Instruction::Jal(dest, target) => {
                 let target_address = match target {
                     ast::JumpTarget::Label(label_name) => self.label_to_address[label_name],
-                    ast::JumpTarget::Offset(offset) => address_add_offset(self.pc, offset),
+                    ast::JumpTarget::Offset(offset) => Self::address_add_offset(self.pc, offset),
                 };
                 self.register[dest.index] = self.pc + 4;
                 self.pc = target_address;
             }
             ast::Instruction::Jalr(dest, base, offset) => {
-                let target_address =
-                    address_add_offset(self.register[base.index], offset) & !0x1;
+                let target_address = Self::address_add_offset(self.register[base.index], offset) & !0x1;
                 self.register[dest.index] = self.pc + 4;
                 self.pc = target_address;
             }
+            // TODO
             _ => panic!(),
         };
     }
 }
+

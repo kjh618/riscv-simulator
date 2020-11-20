@@ -23,3 +23,4 @@ argument_list = _{ (argument ~ ",")* ~ argument }
 argument = _{ address | number | register | label_name }
 
 label = { label_name ~ ":" }
+

@@ -52,7 +52,7 @@ pub enum Instruction<'a> {
     Nop,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone)]
 pub struct Label<'a> {
     pub name: &'a str,
 }
@@ -315,3 +315,4 @@ impl<'a> Program<'a> {
         Self { lines }
     }
 }
+
